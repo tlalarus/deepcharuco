@@ -1,6 +1,6 @@
 from torch import optim, nn
-from model_utils import pre_bgr_image
-from metrics import DC_Metrics
+from .model_utils import pre_bgr_image
+from .metrics import DC_Metrics
 import torch
 import numpy as np
 import pytorch_lightning as pl

@@ -1,6 +1,6 @@
 from torch import optim, nn
-from model_utils import pre_bgr_image, speedy_bargmax2d
-from metrics import Refinenet_Metrics
+from .model_utils import pre_bgr_image, speedy_bargmax2d
+from .metrics import Refinenet_Metrics
 import torch
 import numpy as np
 import pytorch_lightning as pl
