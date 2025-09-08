@@ -6,6 +6,14 @@ import random
 from aruco_utils import board_image, get_board
 from custom_aug.custom_aug import PasteBoard
 
+def clip_keypoints(keypoints, image_shape):
+    h, w = image_shape[:2]
+    cliped = []
+    for kp in keypoints:
+      x = min(max(kp[0], 0), w - 1e-3)
+      y = min(max(kp[1], 0), h - 1e-3)
+      cliped.append((x, y, *kp[2:]))
+    return cliped  
 
 # Monkey patching Albumentations 1.3.0 CoarseDropout bug :)
 # https://github.com/albumentations-team/albumentations/pull/1330
@@ -64,6 +72,7 @@ class Transformation:
     5) Profit!
     """
     def __init__(self, configs, negative_p=0.05, refinenet=False, seed=None):
+        print(f'Using Transformation with negative_p={negative_p}, refinenet={refinenet}, seed={seed}')
         self.seed = seed
         self.negative_p = negative_p
         if seed is not None:
@@ -128,6 +137,8 @@ class Transformation:
         return self.transform(coco_img)
 
     def transform(self, coco_img):
+        self.corners = clip_keypoints(self.corners, self.board_img.shape)
+
         res = self._transform_board()  # Generate board image
 
         # Adapt coco image to input_size

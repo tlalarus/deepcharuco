@@ -136,18 +136,41 @@ class lModel(pl.LightningModule):
         loss_loc = nn.functional.cross_entropy(loc_hat, loc)
         loss_ids = nn.functional.cross_entropy(ids_hat, ids)
 
-        self.log("val_loss_loc", loss_loc)
-        self.log("val_loss_ids", loss_ids)
-        self.log("val_loss", loss_loc + loss_ids)
+        self.log("val_loss_loc", loss_loc, prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
+        self.log("val_loss_ids", loss_ids, prog_bar=False, on_step=False, on_epoch=True, sync_dist=True)
+        self.log("val_loss", loss_loc + loss_ids, on_step=False, on_epoch=True, sync_dist=True)
 
         dist, ratio = self.dc_metrics((loc_hat, ids_hat), (loc, ids))
-        self.log("val_l2_pixels", dist)
-        self.log("val_match_ratio", ratio)
+        self.log("val_l2_pixels", dist, on_step=False, on_epoch=True, sync_dist=True)
+        self.log("val_match_ratio", ratio, on_step=False, on_epoch=True, sync_dist=True)
         return loss_loc + loss_ids
 
     def training_step(self, batch, batch_idx):
         x, (loc, ids) = batch.values()
         loc_hat, ids_hat = self.model(x).values()
+
+        # --- Safety checks ---
+        assert loc.dtype == torch.long, f"loc dtype={loc.dtype}"
+        assert ids.dtype == torch.long, f"ids dtype={ids.dtype}"
+
+        C_loc = loc_hat.shape[1]
+        C_ids = ids_hat.shape[1]
+        loc_min, loc_max = int(loc.min()), int(loc.max())
+        ids_min, ids_max = int(ids.min()), int(ids.max())
+
+        print(f"[DBG] C_loc={C_loc}, loc range=({loc_min},{loc_max})")
+        print(f"[DBG] C_ids={C_ids}, ids range=({ids_min},{ids_max})")
+
+        bad_loc = (loc < 0) | (loc >= C_loc)
+        bad_ids = (ids < 0) | (ids >= C_ids)
+        if bad_loc.any():
+            print("BAD loc indices @", torch.nonzero(bad_loc)[:10])
+            print("loc unique (sample):", torch.unique(loc)[:50])
+            raise RuntimeError("Invalid loc label index")
+        if bad_ids.any():
+            print("BAD ids indices @", torch.nonzero(bad_ids)[:10])
+            print("ids unique (sample):", torch.unique(ids)[:50])
+            raise RuntimeError("Invalid ids label index")
 
         loss_loc = nn.functional.cross_entropy(loc_hat, loc)
         loss_ids = nn.functional.cross_entropy(ids_hat, ids)

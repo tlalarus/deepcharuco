@@ -69,6 +69,7 @@ class CharucoDataset(Dataset):
         image = cv2.imread(os.path.join(self._images_folder, label['file_name']), cv2.IMREAD_COLOR)
 
         # Apply pipeline of transformations
+        print(f'Processing image {label["file_name"]} with idx {idx}')
         image, keypoints, kpts_ids, isnegative = self.transform(image).values()
 
         dust_bin_ids = self.configs.n_ids

@@ -1,10 +1,28 @@
 albumentations==1.3.0
 imgaug==0.4.0
-numba==0.56.4
-numpydoc==1.5.0
-opencv_python<4.7.0
-pytorch_lightning==1.9.3
+
+# numba & llvmlite는 서로 버전 궁합 필수
+numba==0.60.0
+llvmlite==0.43.0
+
+# 과거 xcb 에러 회피: headless 권장 (contrib 모듈 필요하면 contrib-headless로)
+opencv-contrib-python-headless==4.10.0.84
+
+# Lightning 2.3.x와 잘 맞고 Torch 2.5도 OK
+pytorch_lightning==2.3.3
+
+# Torch 2.5와 호환 위해 1.x로 상향
+torchmetrics>=1.2,<2.0
+
+# SciPy 1.10은 Py3.11 지원, numpy<2와 잘 맞음
 scipy==1.10.1
+
+# 기타
+numpydoc==1.5.0
 torchinfo==1.7.2
-torchmetrics==0.11.1
 pydantic<2
+matplotlib
+tqdm
+
+# numpy는 하단에 명시적으로 핀 걸 권장 (numba/scipy 호환)
+numpy>=1.23,<2.0

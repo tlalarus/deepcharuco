@@ -8,10 +8,11 @@ from inference import infer_image, load_models
 # Set path
 deepc_path = 'src/reference/longrun-epoch=99-step=369700.ckpt'
 refinenet_path = 'src/reference/second-refinenet-epoch-100-step=373k.ckpt'
-image_path = 'src/reference/samples_test/IMG_7412.png'
+image_path = 'src/data_demo/tv_side_01.bmp'
 
 # Set model
-n_ids = 16 # num of corners
+# n_ids = 16 # num of corners
+n_ids = 54 # num of corners
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # Load model

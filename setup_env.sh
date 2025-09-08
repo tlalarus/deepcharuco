@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ENV_NAME="deepcharuco-env"
-PYTHON_BIN="python3.8"
+PYTHON_BIN="python3.10"
 REQUIREMENTS_FILE="requirements.txt"
 
 # 1. 기존 가상환경 디렉토리 삭제 (있다면)
