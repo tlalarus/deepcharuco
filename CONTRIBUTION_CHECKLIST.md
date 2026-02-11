@@ -4,7 +4,7 @@
 
 ## Goal Overview
 - [x] 프로젝트 바로 구동 가능한 컨테이너 빌드용 `Dockerfile` 완성
-- [x] 기본 OpenCV 버전(`opencv-contrib<4.7`) 기준 동작 검증
+- [x] OpenCV 구버전/신버전 호환 전략 수립 및 스모크 검증
 - [ ] 완료 기준(Definition of Done) 합의
 
 ## 1) Environment Setup (Docker Only)
@@ -30,7 +30,7 @@
 - [ ] 불필요한 산출물(로그/데이터/대용량 파일) 제외 확인
 
 ## Progress Log
-- 2026-02-11: [ ] 착수 / [ ] 진행 / [x] 완료 — Docker baseline 빌드 + inference/train 스모크 확인(OpenCV 4.6.0)
+- 2026-02-11: [ ] 착수 / [ ] 진행 / [x] 완료 — Docker baseline 빌드 + inference/train 스모크 확인(OpenCV 4.6.0 / 4.11.0)
 - YYYY-MM-DD: [ ] 착수 / [ ] 진행 / [ ] 완료 — 메모:
 
 ## Notes
