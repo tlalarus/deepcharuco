@@ -1,0 +1,30 @@
+{
+  "name": "deepcharuco-dev",
+  "build": {
+    "dockerfile": "../Dockerfile",
+    "context": "..",
+    "args": {
+      "USERNAME": "vscode",
+      "USER_UID": "1000",
+      "USER_GID": "1000"
+    }
+  },
+  "remoteUser": "vscode",
+  "workspaceFolder": "/workspace",
+  "mounts": [
+    "source=/data/dataset/coco,target=/data/dataset/coco,type=bind"
+  ],
+  "postCreateCommand": "bash -lc 'set -e; if [ ! -f /workspace/src/config.yaml ]; then cp /workspace/src/demo_config.yaml /workspace/src/config.yaml; fi; sed -i \"s|/home/adryw/dataset/coco25|/data/dataset/coco|g\" /workspace/src/config.yaml'",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.terminal.activateEnvironment": false
+      },
+      "extensions": [
+        "ms-python.python",
+        "ms-toolsai.jupyter"
+      ]
+    }
+  }
+}
