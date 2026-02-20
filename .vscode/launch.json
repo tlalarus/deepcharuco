@@ -1,0 +1,19 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python: Train DeepCharuco (src/train.py)",
+      "type": "python",
+      "request": "launch",
+      "python": "/usr/local/bin/python",
+      "program": "${workspaceFolder}/src/train.py",
+      "cwd": "${workspaceFolder}/src",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src",
+        "PYTHONUNBUFFERED": "1"
+      }
+    }
+  ]
+}

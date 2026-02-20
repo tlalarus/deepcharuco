@@ -8,20 +8,20 @@
 - [ ] 완료 기준(Definition of Done) 합의
 
 ## 1) Environment Setup (Docker Only)
-- [ ] Dev Container 열기 (`Reopen in Container`)
+- [x] Dev Container 열기 (`Reopen in Container`)
 - [x] COCO 데이터 마운트 확인 (`/data/dataset/coco`)
 - [x] `src/config.yaml` 경로가 COCO 경로로 설정되었는지 확인
 - [x] 기본 스모크 테스트 실행: `cd src && python inference.py`
 
 ## 2) Codebase Understanding
-- [ ] 모델 구조 파악 (`src/models/net.py`, `src/models/refinenet.py`)
+- [x] 모델 구조 파악 (`src/models/net.py`, `src/models/refinenet.py`)
 - [ ] 데이터 파이프라인 파악 (`src/data.py`, `src/data_refinenet.py`)
-- [ ] 설정/실행 경로 파악 (`src/configs.py`, `src/inference.py`)
+- [x] 설정/실행 경로 파악 (`src/configs.py`, `src/inference.py`)
 
 ## 3) First Contribution
-- [ ] 작업 이슈 선정 (bugfix/docs/refactor 중 1개)
-- [ ] 브랜치 생성 (`feat/...` or `fix/...`)
-- [ ] 변경 구현 및 Docker 내 재현 테스트
+- [x] 작업 이슈 선정 (bugfix/docs/refactor 중 1개)
+- [x] 브랜치 생성 (`feat/...` or `fix/...`)
+- [x] 변경 구현 및 Docker 내 재현 테스트
 - [ ] PR 생성 (변경 내용, 검증 방법, 결과 포함)
 
 ## 4) Validation & Quality
@@ -31,6 +31,7 @@
 
 ## Progress Log
 - 2026-02-11: [ ] 착수 / [ ] 진행 / [x] 완료 — Docker baseline 빌드 + inference/train 스모크 확인(OpenCV 4.6.0 / 4.11.0)
+- 2026-02-13: [ ] 착수 / [ ] 진행 / [x] 완료 — Dev Container GPU 환경 정비 + `train.py` 실행 안정화(`sm_120`, `shm` 이슈 대응)
 - YYYY-MM-DD: [ ] 착수 / [ ] 진행 / [ ] 완료 — 메모:
 
 ## Notes

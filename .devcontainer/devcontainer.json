@@ -6,10 +6,22 @@
     "args": {
       "USERNAME": "vscode",
       "USER_UID": "1000",
-      "USER_GID": "1000"
+      "USER_GID": "1000",
+      "TORCH_INDEX_URL": "https://download.pytorch.org/whl/cu128",
+      "TORCH_PACKAGE": "torch>=2.6"
     }
   },
+  "runArgs": [
+    "--gpus=all",
+    "--ipc=host",
+    "--shm-size=8g"
+  ],
+  "containerEnv": {
+    "NVIDIA_VISIBLE_DEVICES": "all",
+    "NVIDIA_DRIVER_CAPABILITIES": "compute,utility"
+  },
   "remoteUser": "vscode",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
   "workspaceFolder": "/workspace",
   "mounts": [
     "source=/data/dataset/coco,target=/data/dataset/coco,type=bind"
@@ -19,7 +31,8 @@
     "vscode": {
       "settings": {
         "python.defaultInterpreterPath": "/usr/local/bin/python",
-        "python.terminal.activateEnvironment": false
+        "python.terminal.activateEnvironment": false,
+        "terminal.integrated.defaultProfile.linux": "bash"
       },
       "extensions": [
         "ms-python.python",
