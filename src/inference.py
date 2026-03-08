@@ -179,6 +179,8 @@ if __name__ == '__main__':
 
     # Inference test on custom image
     SAMPLE_IMAGES = './reference/samples_test/IMG_7412.png'
+    SAVE_DIR = './reference/samples_test/inference_out'
+    os.makedirs(SAVE_DIR, exist_ok=True)
     import glob
     for p in glob.glob(SAMPLE_IMAGES):
         img = cv2.imread(p)
@@ -192,6 +194,11 @@ if __name__ == '__main__':
 
         # cv2 inference
         out_img_cv, corners, _ = cv2_aruco_detect(img.copy(), dictionary, board, parameters)
+
+        base_name = os.path.splitext(os.path.basename(p))[0]
+        cv2.imwrite(os.path.join(SAVE_DIR, f'{base_name}_deepcharuco.png'), out_img_dc)
+        cv2.imwrite(os.path.join(SAVE_DIR, f'{base_name}_cv2_aruco.png'), out_img_cv)
+        print(f'Saved outputs to {SAVE_DIR}')
 
         # show result
         out_img_dc = cv2.resize(out_img_dc, (out_img_dc.shape[1] * 3, out_img_dc.shape[0] * 3), cv2.INTER_LANCZOS4)
