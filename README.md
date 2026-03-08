@@ -47,9 +47,16 @@ Running on macbook air M2 using MPS
 - Full pipeline: `>= 30 fps`
 
 ## Setup for training (and inference on val data)
-`requirements.txt` should contain a valid list of requirements.  
-Current compatibility target is `opencv-contrib-python>=4.6,<4.12` (including OpenCV 4.11).  
-OpenCV ArUco API differences are handled at runtime in `src/aruco_utils.py` by checking available symbols (`hasattr`) and selecting the compatible code path (e.g. `ArucoDetector` vs `detectMarkers`, `CharucoBoard` vs `CharucoBoard_create`).
+`requirements.txt` should contain a valid list of requirements. Current setup keeps OpenCV in a compatible range (`opencv-contrib-python>=4.6,<4.12`).  
+For reproducible Docker builds, `Dockerfile` force-reinstalls `opencv-contrib-python` via build arg `OPENCV_CONTRIB_VERSION` (default `4.11.0.86`) after installing `requirements.txt`.  
+You can choose OpenCV version at build time:
+```bash
+# default (4.11.0.86)
+docker build -t deepcharuco-dev .
+
+# custom version example
+docker build --build-arg OPENCV_CONTRIB_VERSION=4.6.0.66 -t deepcharuco-dev:opencv460 .
+```
 If you wan to run `inference.py` or the `data.py` and `data_refinenet.py` you will need to install [gridwindow](https://github.com/JunkyByte/python-gridwindow) which is used for visualization (or replace everything with normal `cv2` windows)
 Synthetic data for `DeepCharuco` training
 ![data](https://i.imgur.com/KasncjL.png)  

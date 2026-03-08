@@ -3,6 +3,9 @@ FROM python:3.10-slim
 ARG USERNAME=vscode
 ARG USER_UID=1000
 ARG USER_GID=${USER_UID}
+ARG OPENCV_CONTRIB_VERSION=4.11.0.86
+ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu128
+ARG TORCH_PACKAGE=torch>=2.6
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PIP_NO_CACHE_DIR=1 \
@@ -34,10 +37,10 @@ WORKDIR /workspace
 COPY requirements.txt /tmp/requirements.txt
 
 RUN python -m pip install --upgrade pip "setuptools<81" wheel \
-    && pip install --index-url https://download.pytorch.org/whl/cpu torch==2.1.0 \
+    && pip install --index-url ${TORCH_INDEX_URL} "${TORCH_PACKAGE}" \
     && pip install -r /tmp/requirements.txt \
     && pip uninstall -y opencv-python opencv-python-headless || true \
-    && pip install "opencv-contrib-python<4.7.0" \
+    && pip install --force-reinstall --no-deps opencv-contrib-python==${OPENCV_CONTRIB_VERSION} \
     && pip install \
         PyYAML \
         pydantic \
