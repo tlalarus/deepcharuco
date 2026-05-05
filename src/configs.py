@@ -48,9 +48,13 @@ if __name__ == '__main__':
 
     # Create an image from the gridboard
     board = get_board(config)
-    img, corners = board_image(board, (480, 480),
+    img, corners = board_image(board, (800, 600),
                                config.row_count, config.col_count)
     img = draw_inner_corners(img, corners, np.arange(config.n_ids), draw_ids=True)
-    cv2.imshow('Gridboard', img)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+    try:
+        cv2.imshow('Gridboard', img)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+    except cv2.error:
+        print('OpenCV GUI support not available; saving output to gridboard.png')
+        cv2.imwrite('gridboard.png', img)

@@ -119,16 +119,25 @@ def board_image(board, resolution: tuple[int, int],
     `cv2.COLOR_GRAY2BGR` flag.
     """
     if hasattr(board, "generateImage"):
-        board_gray = board.generateImage(resolution)
+        board_gray = board.generateImage(resolution, marginSize=20)
     else:
         board_gray = board.draw(outSize=resolution)
     img = cv2.cvtColor(board_gray, cv2.COLOR_GRAY2BGR)
-    pixel_offset = np.array([resolution[0] / col_count, resolution[1] / row_count])
-
-    # row_id, col_id, (x, y) pixel coords
-    inn_rc = np.arange(1, row_count)
-    inn_cc = np.arange(1, col_count)
-    corners = np.array(np.meshgrid(inn_rc, inn_cc)).reshape((2, -1)).T * pixel_offset
+    
+    # Calculate accurate pixel coordinates for inner corners
+    chess_corners = board.getChessboardCorners()
+    square_len = board.getSquareLength()
+    physical_width = col_count * square_len
+    physical_height = row_count * square_len
+    scale_x = (resolution[0] - 2 * 20) / physical_width  # marginSize=20
+    scale_y = (resolution[1] - 2 * 20) / physical_height
+    scale = min(scale_x, scale_y)
+    board_pixel_width = physical_width * scale
+    board_pixel_height = physical_height * scale
+    offset_x = (resolution[0] - board_pixel_width) / 2
+    offset_y = (resolution[1] - board_pixel_height) / 2
+    corners = chess_corners[:, :2] * scale + np.array([offset_x, offset_y])
+    
     return img, corners.astype(int)
 
 
