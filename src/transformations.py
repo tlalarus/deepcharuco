@@ -72,9 +72,8 @@ class Transformation:
 
         self.refinenet = refinenet
 
-        min_r = min(configs.input_size)
         board = get_board(configs)
-        board_img, corners = board_image(board, (min_r, min_r),
+        board_img, corners = board_image(board, (configs.input_size[0], configs.input_size[1]),
                                          configs.row_count, configs.col_count)
 
         self.board_img = board_img
