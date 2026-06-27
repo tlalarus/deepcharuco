@@ -128,10 +128,9 @@ def board_image(board, resolution: tuple[int, int],
     # row_id, col_id, (x, y) pixel coords
     inn_rc = np.arange(1, row_count)
     inn_cc = np.arange(1, col_count)
-    corners = np.array(np.meshgrid(inn_rc, inn_cc)).reshape((2, -1)).T * pixel_offset
+    corners = np.array(np.meshgrid(inn_cc, inn_rc)).reshape((2, -1)).T * pixel_offset
+
     return img, corners.astype(int)
-
-
 def draw_inner_corners(img: np.ndarray, corners: np.ndarray, ids: np.ndarray,
                        draw_ids=False, radius=2, color=(0, 0, 255)) -> np.ndarray:
     """

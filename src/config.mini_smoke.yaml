@@ -1,0 +1,23 @@
+board_name: DICT_4X4_50
+row_count: 5
+col_count: 5
+square_len: 0.01
+marker_len: 0.0075
+input_size:
+- 320
+- 240
+bs_train: 32
+bs_train_rn: 64
+bs_val: 64
+bs_val_rn: 128
+num_workers: 6
+train_labels: /data/dataset/coco/annotations/captions_train2017.json
+val_labels: /data/dataset/coco/annotations/captions_val2017.json
+val_images: /data/dataset/coco/val2017/
+train_images: /data/dataset/coco/train2017/
+model_type: mini_deepcharuco
+mini_backbone: resnet18
+mini_stride: 4
+mini_heatmap_sigma: 1.8
+mini_lambda_offset: 1.0
+mini_learning_rate: 0.001

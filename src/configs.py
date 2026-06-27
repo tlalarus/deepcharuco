@@ -1,12 +1,13 @@
 import yaml
 import cv2
+import os
 from aruco_utils import get_board, board_image
 from typing import Optional
 from pydantic.dataclasses import dataclass
 
 
-# HARDCODED for the time being
-CONFIG_PATH = 'config.yaml'
+# Default path, can be overridden for smoke/runs.
+CONFIG_PATH = os.getenv("DEEPCHARUCO_CONFIG_PATH", "config.yaml")
 
 
 @dataclass
@@ -30,6 +31,13 @@ class Config:
 
     # Self populated
     n_ids: Optional[int] = None
+    # Mini DeepCharuco options
+    model_type: str = "deepcharuco"
+    mini_backbone: str = "resnet18"
+    mini_stride: int = 4
+    mini_heatmap_sigma: float = 1.8
+    mini_lambda_offset: float = 1.0
+    mini_learning_rate: float = 1e-3
 
     def __post_init__(self):
         self.n_ids = (self.row_count - 1) * (self.col_count - 1)
@@ -48,9 +56,7 @@ if __name__ == '__main__':
 
     # Create an image from the gridboard
     board = get_board(config)
-    img, corners = board_image(board, (480, 480),
+    img, corners = board_image(board, (480, 320),
                                config.row_count, config.col_count)
     img = draw_inner_corners(img, corners, np.arange(config.n_ids), draw_ids=True)
-    cv2.imshow('Gridboard', img)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+    cv2.imwrite('gridboard.png', img)

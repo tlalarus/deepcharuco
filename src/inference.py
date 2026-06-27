@@ -10,6 +10,8 @@ from configs import load_configuration
 from models.model_utils import pred_to_keypoints, extract_patches, pre_bgr_image
 from models.net import lModel, dcModel
 from models.refinenet import RefineNet, lRefineNet
+from infer_mini import infer_image as infer_image_mini
+from infer_mini import load_mini_model
 
 
 def solve_pnp(keypoints, col_count, row_count, square_len, camera_matrix, dist_coeffs):
@@ -86,123 +88,183 @@ def load_models(deepc_ckpt: str, refinenet_ckpt: Optional[str] = None, n_ids: in
 
 if __name__ == '__main__':
     import os
+    import glob
     from gridwindow import MagicGrid
     from utils import pixel_error
     from data import CharucoDataset
+    from data_mini import MiniCharucoDataset
     from aruco_utils import get_aruco_dict, get_board, create_detector_parameters
     config = load_configuration(configs.CONFIG_PATH)
+    model_type = config.model_type.lower().strip()
 
     # Load aruco board for cv2 inference
     dictionary = get_aruco_dict(config.board_name)
     board = get_board(config)
     parameters = create_detector_parameters()
 
-    # Load models
-    deepc_path = "./reference/longrun-epoch=99-step=369700.ckpt"
-    refinenet_path = "./reference/second-refinenet-epoch-100-step=373k.ckpt"
     device = 'cpu'
     if torch.cuda.is_available():
         device = 'cuda'
     elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
         device = 'mps'
-    deepc, refinenet = load_models(deepc_path, refinenet_path, n_ids=config.n_ids, device=device)
+    if model_type == "mini_deepcharuco":
+        mini_ckpt_path = os.getenv("MINI_DEEPCHARUCO_CKPT", "./reference/mini_deepcharuco.ckpt")
+        mini_model = load_mini_model(mini_ckpt_path, config, device)
 
-    # Inference test on validation data
-    up_scale = 1  # Set to 8 for with/without refinenet comparison
-    if up_scale > 1:
-        config = replace(config, input_size=(320 * up_scale, 240 * up_scale))
-
-    # Load val dataset
-    dataset_val = CharucoDataset(config,
-                                 config.val_labels,
-                                 config.val_images,
-                                 visualize=False,
-                                 validation=True)
-
-    if "DISPLAY" in os.environ:
-        w = MagicGrid(1200, 1200, waitKey=0)
-    d_tot = 0
-    d_ref_tot = 0
-    for ith, sample in enumerate(dataset_val):
-        image, label = sample.values()
-        loc, ids = label
-
-        # Images returned from dataset are normalized.
-        img = ((image * 255) + 128).astype(np.uint8)
-        img = cv2.cvtColor(img[0], cv2.COLOR_GRAY2BGR)
-
-        if up_scale > 1:
-            img = cv2.resize(img, (320, 240), cv2.INTER_LINEAR)
-
-        # Run inference
-        keypoints, out_img_dc = infer_image(img, config.n_ids, deepc,
-                                            refinenet, draw_pred=True,
-                                            device=device)
-        print('Keypoints\n', keypoints)
-
-        if up_scale > 1:
-            # Run inference again without refinenet
-            keypoints_raw, _ = infer_image(img, config.n_ids, deepc, None,
-                                           draw_pred=False,
-                                           device=device)
-
-            label_kpts, label_ids = label_to_keypoints(loc[None, ...], ids[None, ...], config.n_ids)
-            label_kpts = label_kpts.astype(np.float32) / up_scale
-
-            label_kpts = np.array([[k[0], k[1], idx] for k, idx in
-                                  sorted(zip(label_kpts, label_ids), key=lambda x:
-                                         x[1])])
-
-            if len(label_kpts) != 0 and len(keypoints) != 0:
-                d, d_ref = pixel_error(keypoints_raw, keypoints, label_kpts)
-
-            # Error statistics
-            if d is not None:
-                d_tot += d
-                d_ref_tot += d_ref
-
-        # cv2 inference
-        out_img_cv, corners, _ = cv2_aruco_detect(img.copy(), dictionary, board, parameters)
-
-        # Statistics up now
-        if up_scale > 1:
-            print('Cumulative statistics on samples (up now)')
-            print(f'Mean Error raw: {d_tot / (ith + 1):.2f}')
-            print(f'Mean Error ref: {d_ref_tot / (ith + 1):.2f}')
-
-        # show result
-        out_img_dc = cv2.resize(out_img_dc, (out_img_dc.shape[1] * 3, out_img_dc.shape[0] * 3), cv2.INTER_LANCZOS4)
-        out_img_cv = cv2.resize(out_img_cv, (out_img_cv.shape[1] * 3, out_img_cv.shape[0] * 3), cv2.INTER_LANCZOS4)
+        dataset_val = MiniCharucoDataset(config,
+                                         config.val_labels,
+                                         config.val_images,
+                                         visualize=False,
+                                         validation=True)
         if "DISPLAY" in os.environ:
-            if w.update([out_img_dc, out_img_cv]) == ord('q'):
-                break
+            w = MagicGrid(1200, 1200, waitKey=0)
 
-    # Inference test on custom image
-    SAMPLE_IMAGES = './reference/samples_test/IMG_7412.png'
-    SAVE_DIR = './reference/samples_test/inference_out'
-    os.makedirs(SAVE_DIR, exist_ok=True)
-    import glob
-    for p in glob.glob(SAMPLE_IMAGES):
-        img = cv2.imread(p)
+        for sample in dataset_val:
+            image = sample["image"]
+            img = ((image * 255) + 128).astype(np.uint8)
+            img = cv2.cvtColor(img[0], cv2.COLOR_GRAY2BGR)
 
-        # Run inference
-        keypoints, out_img_dc = infer_image(img, config.n_ids, deepc,
-                                            refinenet,
-                                            draw_pred=True,
-                                            device=device)
-        print(keypoints)
+            keypoints, _ = infer_image_mini(
+                image_bgr=img,
+                model=mini_model,
+                stride=config.mini_stride,
+                device=device,
+                conf_threshold=None,
+            )
+            print('Keypoints\n', keypoints)
 
-        # cv2 inference
-        out_img_cv, corners, _ = cv2_aruco_detect(img.copy(), dictionary, board, parameters)
+            out_img_dc = draw_inner_corners(
+                img.copy(),
+                keypoints[:, :2] if keypoints.shape[0] > 0 else np.zeros((0, 2), dtype=np.float32),
+                keypoints[:, 2].astype(np.int32) if keypoints.shape[0] > 0 else np.zeros((0,), dtype=np.int32),
+                radius=3,
+                draw_ids=True,
+                color=(0, 0, 255),
+            )
+            out_img_cv, _, _ = cv2_aruco_detect(img.copy(), dictionary, board, parameters)
 
-        base_name = os.path.splitext(os.path.basename(p))[0]
-        cv2.imwrite(os.path.join(SAVE_DIR, f'{base_name}_deepcharuco.png'), out_img_dc)
-        cv2.imwrite(os.path.join(SAVE_DIR, f'{base_name}_cv2_aruco.png'), out_img_cv)
-        print(f'Saved outputs to {SAVE_DIR}')
+            out_img_dc = cv2.resize(out_img_dc, (out_img_dc.shape[1] * 3, out_img_dc.shape[0] * 3), cv2.INTER_LANCZOS4)
+            out_img_cv = cv2.resize(out_img_cv, (out_img_cv.shape[1] * 3, out_img_cv.shape[0] * 3), cv2.INTER_LANCZOS4)
+            if "DISPLAY" in os.environ:
+                if w.update([out_img_dc, out_img_cv]) == ord('q'):
+                    break
 
-        # show result
-        out_img_dc = cv2.resize(out_img_dc, (out_img_dc.shape[1] * 3, out_img_dc.shape[0] * 3), cv2.INTER_LANCZOS4)
-        out_img_cv = cv2.resize(out_img_cv, (out_img_cv.shape[1] * 3, out_img_cv.shape[0] * 3), cv2.INTER_LANCZOS4)
+        sample_images = './reference/samples_test/IMG_7412.png'
+        save_dir = './reference/samples_test/inference_out'
+        os.makedirs(save_dir, exist_ok=True)
+        for p in glob.glob(sample_images):
+            img = cv2.imread(p)
+            keypoints, _ = infer_image_mini(
+                image_bgr=img,
+                model=mini_model,
+                stride=config.mini_stride,
+                device=device,
+                conf_threshold=None,
+            )
+            out_img_dc = draw_inner_corners(
+                img.copy(),
+                keypoints[:, :2] if keypoints.shape[0] > 0 else np.zeros((0, 2), dtype=np.float32),
+                keypoints[:, 2].astype(np.int32) if keypoints.shape[0] > 0 else np.zeros((0,), dtype=np.int32),
+                radius=3,
+                draw_ids=True,
+                color=(0, 0, 255),
+            )
+            out_img_cv, _, _ = cv2_aruco_detect(img.copy(), dictionary, board, parameters)
+
+            base_name = os.path.splitext(os.path.basename(p))[0]
+            cv2.imwrite(os.path.join(save_dir, f'{base_name}_mini_deepcharuco.png'), out_img_dc)
+            cv2.imwrite(os.path.join(save_dir, f'{base_name}_cv2_aruco.png'), out_img_cv)
+            print(f'Saved outputs to {save_dir}')
+    elif model_type == "deepcharuco":
+        deepc_path = "./reference/longrun-epoch=99-step=369700.ckpt"
+        refinenet_path = "./reference/second-refinenet-epoch-100-step=373k.ckpt"
+        deepc, refinenet = load_models(deepc_path, refinenet_path, n_ids=config.n_ids, device=device)
+
+        # Inference test on validation data
+        up_scale = 1  # Set to 8 for with/without refinenet comparison
+        if up_scale > 1:
+            config = replace(config, input_size=(320 * up_scale, 240 * up_scale))
+
+        dataset_val = CharucoDataset(config,
+                                     config.val_labels,
+                                     config.val_images,
+                                     visualize=False,
+                                     validation=True)
+
         if "DISPLAY" in os.environ:
-            if w.update([out_img_dc, out_img_cv]) == ord('q'):
-                break
+            w = MagicGrid(1200, 1200, waitKey=0)
+        d_tot = 0
+        d_ref_tot = 0
+        for ith, sample in enumerate(dataset_val):
+            image, label = sample.values()
+            loc, ids = label
+
+            img = ((image * 255) + 128).astype(np.uint8)
+            img = cv2.cvtColor(img[0], cv2.COLOR_GRAY2BGR)
+
+            if up_scale > 1:
+                img = cv2.resize(img, (320, 240), cv2.INTER_LINEAR)
+
+            keypoints, out_img_dc = infer_image(img, config.n_ids, deepc,
+                                                refinenet, draw_pred=True,
+                                                device=device)
+            print('Keypoints\n', keypoints)
+
+            if up_scale > 1:
+                keypoints_raw, _ = infer_image(img, config.n_ids, deepc, None,
+                                               draw_pred=False,
+                                               device=device)
+
+                label_kpts, label_ids = label_to_keypoints(loc[None, ...], ids[None, ...], config.n_ids)
+                label_kpts = label_kpts.astype(np.float32) / up_scale
+
+                label_kpts = np.array([[k[0], k[1], idx] for k, idx in
+                                      sorted(zip(label_kpts, label_ids), key=lambda x:
+                                             x[1])])
+
+                if len(label_kpts) != 0 and len(keypoints) != 0:
+                    d, d_ref = pixel_error(keypoints_raw, keypoints, label_kpts)
+
+                if d is not None:
+                    d_tot += d
+                    d_ref_tot += d_ref
+
+            out_img_cv, corners, _ = cv2_aruco_detect(img.copy(), dictionary, board, parameters)
+
+            if up_scale > 1:
+                print('Cumulative statistics on samples (up now)')
+                print(f'Mean Error raw: {d_tot / (ith + 1):.2f}')
+                print(f'Mean Error ref: {d_ref_tot / (ith + 1):.2f}')
+
+            out_img_dc = cv2.resize(out_img_dc, (out_img_dc.shape[1] * 3, out_img_dc.shape[0] * 3), cv2.INTER_LANCZOS4)
+            out_img_cv = cv2.resize(out_img_cv, (out_img_cv.shape[1] * 3, out_img_cv.shape[0] * 3), cv2.INTER_LANCZOS4)
+            if "DISPLAY" in os.environ:
+                if w.update([out_img_dc, out_img_cv]) == ord('q'):
+                    break
+
+        sample_images = './reference/samples_test/IMG_7412.png'
+        save_dir = './reference/samples_test/inference_out'
+        os.makedirs(save_dir, exist_ok=True)
+        for p in glob.glob(sample_images):
+            img = cv2.imread(p)
+
+            keypoints, out_img_dc = infer_image(img, config.n_ids, deepc,
+                                                refinenet,
+                                                draw_pred=True,
+                                                device=device)
+            print(keypoints)
+
+            out_img_cv, corners, _ = cv2_aruco_detect(img.copy(), dictionary, board, parameters)
+
+            base_name = os.path.splitext(os.path.basename(p))[0]
+            cv2.imwrite(os.path.join(save_dir, f'{base_name}_deepcharuco.png'), out_img_dc)
+            cv2.imwrite(os.path.join(save_dir, f'{base_name}_cv2_aruco.png'), out_img_cv)
+            print(f'Saved outputs to {save_dir}')
+
+            out_img_dc = cv2.resize(out_img_dc, (out_img_dc.shape[1] * 3, out_img_dc.shape[0] * 3), cv2.INTER_LANCZOS4)
+            out_img_cv = cv2.resize(out_img_cv, (out_img_cv.shape[1] * 3, out_img_cv.shape[0] * 3), cv2.INTER_LANCZOS4)
+            if "DISPLAY" in os.environ:
+                if w.update([out_img_dc, out_img_cv]) == ord('q'):
+                    break
+    else:
+        raise ValueError(f"Unsupported model_type: {config.model_type}")

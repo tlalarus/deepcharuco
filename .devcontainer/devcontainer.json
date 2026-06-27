@@ -24,7 +24,7 @@
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
   "workspaceFolder": "/workspace",
   "mounts": [
-    "source=/data/dataset/coco,target=/data/dataset/coco,type=bind"
+    "source=/data/dataset,target=/data/dataset,type=bind"
   ],
   "postCreateCommand": "bash -lc 'set -e; if [ ! -f /workspace/src/config.yaml ]; then cp /workspace/src/demo_config.yaml /workspace/src/config.yaml; fi; sed -i \"s|/home/adryw/dataset/coco25|/data/dataset/coco|g\" /workspace/src/config.yaml'",
   "customizations": {

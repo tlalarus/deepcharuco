@@ -6,6 +6,12 @@ square_len: 0.01
 marker_len: 0.0075
 
 input_size: [320, 240]
+model_type: deepcharuco
+mini_backbone: resnet18
+mini_stride: 4
+mini_heatmap_sigma: 1.8
+mini_lambda_offset: 1.0
+mini_learning_rate: 0.001
 bs_train: 32
 bs_train_rn: 64
 bs_val: 64

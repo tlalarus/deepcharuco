@@ -7,10 +7,12 @@ from torch.utils.data import DataLoader
 
 from configs import load_configuration
 from pytorch_lightning.loggers import TensorBoardLogger
-from pytorch_lightning.callbacks import StochasticWeightAveraging, ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 import configs
 from data import CharucoDataset
+from data_mini import MiniCharucoDataset
 from models.net import lModel, dcModel
+from models.mini_deepcharuco import MiniDeepCharuco, MiniLossConfig, lMiniModel
 import pytorch_lightning as pl
 
 
@@ -40,31 +42,53 @@ def print_runtime_diagnostics():
 if __name__ == '__main__':
     print_runtime_diagnostics()
     config = load_configuration(configs.CONFIG_PATH)
+    model_type = config.model_type.lower().strip()
     num_workers = int(os.getenv("DEEPCHARUCO_NUM_WORKERS", config.num_workers))
     prefetch_factor = int(os.getenv("DEEPCHARUCO_PREFETCH_FACTOR", "2"))
     pin_memory = torch.cuda.is_available()
     trainer_accelerator = os.getenv("DEEPCHARUCO_ACCELERATOR", "auto")
     trainer_devices_env = os.getenv("DEEPCHARUCO_DEVICES", "auto")
     trainer_devices = int(trainer_devices_env) if trainer_devices_env != "auto" else "auto"
+    max_epochs = int(os.getenv("DEEPCHARUCO_MAX_EPOCHS", "100"))
+    limit_train_batches = float(os.getenv("DEEPCHARUCO_LIMIT_TRAIN_BATCHES", "1.0"))
+    limit_val_batches = float(os.getenv("DEEPCHARUCO_LIMIT_VAL_BATCHES", "1.0"))
     print(f"[env] trainer_accelerator: {trainer_accelerator}")
     print(f"[env] trainer_devices: {trainer_devices}")
+    print(f"[env] max_epochs: {max_epochs}")
+    print(f"[env] limit_train_batches: {limit_train_batches}")
+    print(f"[env] limit_val_batches: {limit_val_batches}")
     if trainer_accelerator == "gpu" and not torch.cuda.is_available():
         raise RuntimeError(
             "GPU was forced (DEEPCHARUCO_ACCELERATOR=gpu), "
             "but torch.cuda.is_available() is False."
         )
 
-    dataset = CharucoDataset(config,
-                             config.train_labels,
-                             config.train_images,
-                             visualize=False,
-                             validation=False)
+    if model_type == "mini_deepcharuco":
+        dataset = MiniCharucoDataset(config,
+                                     config.train_labels,
+                                     config.train_images,
+                                     visualize=False,
+                                     validation=False)
 
-    dataset_val = CharucoDataset(config,
-                                 config.val_labels,
-                                 config.val_images,
+        dataset_val = MiniCharucoDataset(config,
+                                         config.val_labels,
+                                         config.val_images,
+                                         visualize=False,
+                                         validation=True)
+    elif model_type == "deepcharuco":
+        dataset = CharucoDataset(config,
+                                 config.train_labels,
+                                 config.train_images,
                                  visualize=False,
-                                 validation=True)
+                                 validation=False)
+
+        dataset_val = CharucoDataset(config,
+                                     config.val_labels,
+                                     config.val_images,
+                                     visualize=False,
+                                     validation=True)
+    else:
+        raise ValueError(f"Unsupported model_type: {config.model_type}")
 
     train_loader_kwargs = dict(
         batch_size=config.bs_train,
@@ -85,15 +109,39 @@ if __name__ == '__main__':
     train_loader = DataLoader(dataset, **train_loader_kwargs)
     val_loader = DataLoader(dataset_val, **val_loader_kwargs)
 
-    model = dcModel(n_ids=config.n_ids)
-    train_model = lModel(model)
-
-    logger = TensorBoardLogger("tb_logs", name="deepcharuco")
-    checkpoint_callback = ModelCheckpoint(dirpath="tb_logs/ckpts_deepcharuco/", save_top_k=10,
-                                          monitor="val_loss")
-    trainer = pl.Trainer(max_epochs=100, logger=logger,
+    if model_type == "mini_deepcharuco":
+        model = MiniDeepCharuco(
+            num_corners=config.n_ids,
+            in_channels=1,
+            backbone=config.mini_backbone
+        )
+        loss_cfg = MiniLossConfig(lambda_offset=config.mini_lambda_offset)
+        train_model = lMiniModel(model=model,
+                                 loss_config=loss_cfg,
+                                 lr=config.mini_learning_rate)
+        logger = TensorBoardLogger("tb_logs", name="mini_deepcharuco")
+        checkpoint_callback = ModelCheckpoint(dirpath="tb_logs/ckpts_mini_deepcharuco/",
+                                              save_top_k=10,
+                                              monitor="val_loss")
+    else:
+        model = dcModel(n_ids=config.n_ids)
+        train_model = lModel(model)
+        logger = TensorBoardLogger("tb_logs", name="deepcharuco")
+        checkpoint_callback = ModelCheckpoint(dirpath="tb_logs/ckpts_deepcharuco/",
+                                              save_top_k=10,
+                                              monitor="val_loss")
+    early_stopping = EarlyStopping(
+        monitor="val_loss",
+        mode="min",
+        patience=30,
+        min_delta=0.02,
+        verbose=True
+    )
+    trainer = pl.Trainer(max_epochs=max_epochs, logger=logger,
                          accelerator=trainer_accelerator, devices=trainer_devices,
-                         callbacks=[checkpoint_callback]) #,
+                         limit_train_batches=limit_train_batches,
+                         limit_val_batches=limit_val_batches,
+                         callbacks=[checkpoint_callback, early_stopping]) #,
                          # resume_from_checkpoint='./reference/epoch=44-step=83205.ckpt')
 
     # Run learning rate finder
