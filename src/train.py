@@ -13,6 +13,7 @@ from data import CharucoDataset
 from data_mini import MiniCharucoDataset
 from models.net import lModel, dcModel
 from models.mini_deepcharuco import MiniDeepCharuco, MiniLossConfig, lMiniModel
+from real_validation import RealValidationCallback
 import pytorch_lightning as pl
 
 
@@ -63,6 +64,8 @@ if __name__ == '__main__':
             "but torch.cuda.is_available() is False."
         )
 
+    real_val_loader = None
+    real_val_callback = None
     if model_type == "mini_deepcharuco":
         dataset = MiniCharucoDataset(config,
                                      config.train_labels,
@@ -75,6 +78,56 @@ if __name__ == '__main__':
                                          config.val_images,
                                          visualize=False,
                                          validation=True)
+        if config.use_real_val:
+            if not config.real_val_dir:
+                raise ValueError(
+                    "use_real_val=True requires real_val_dir to be set in the config."
+                )
+            manifest_path = os.path.join(config.real_val_dir, "manifest.csv")
+            if not os.path.exists(manifest_path):
+                raise FileNotFoundError(
+                    f"Real validation manifest not found at {manifest_path}. "
+                    "Run src/prepare_real_val.py to generate the dataset."
+                )
+            real_dataset = MiniCharucoDataset(
+                config,
+                manifest_path,
+                config.real_val_dir,
+                validation=True,
+                visualize=False,
+                real_val=True,
+                return_raw=True,
+            )
+            real_loader_kwargs = dict(
+                batch_size=config.real_val_batch_size,
+                shuffle=False,
+                num_workers=config.real_val_num_workers,
+                pin_memory=pin_memory,
+            )
+            if config.real_val_num_workers > 0:
+                real_loader_kwargs["prefetch_factor"] = prefetch_factor
+            real_val_loader = DataLoader(real_dataset, **real_loader_kwargs)
+            real_val_callback = RealValidationCallback(
+                real_val_loader=real_val_loader,
+                real_every=config.real_val_every,
+                stride=config.mini_stride,
+            )
+
+        model = MiniDeepCharuco(
+            num_corners=config.n_ids,
+            in_channels=1,
+            backbone=config.mini_backbone
+        )
+        loss_cfg = MiniLossConfig(lambda_offset=config.mini_lambda_offset)
+        train_model = lMiniModel(model=model,
+                                 loss_config=loss_cfg,
+                                 lr=config.mini_learning_rate)
+        logger = TensorBoardLogger("tb_logs", name="mini_deepcharuco")
+        monitor_name = "real_val_mean_error_px" if config.use_real_val else "val_loss"
+        checkpoint_callback = ModelCheckpoint(dirpath="tb_logs/ckpts_mini_deepcharuco/",
+                                              save_top_k=10,
+                                              monitor=monitor_name,
+                                              mode="min")
     elif model_type == "deepcharuco":
         dataset = CharucoDataset(config,
                                  config.train_labels,
@@ -87,6 +140,13 @@ if __name__ == '__main__':
                                      config.val_images,
                                      visualize=False,
                                      validation=True)
+        model = dcModel(n_ids=config.n_ids)
+        train_model = lModel(model)
+        logger = TensorBoardLogger("tb_logs", name="deepcharuco")
+        checkpoint_callback = ModelCheckpoint(dirpath="tb_logs/ckpts_deepcharuco/",
+                                              save_top_k=10,
+                                              monitor="val_loss",
+                                              mode="min")
     else:
         raise ValueError(f"Unsupported model_type: {config.model_type}")
 
@@ -109,27 +169,10 @@ if __name__ == '__main__':
     train_loader = DataLoader(dataset, **train_loader_kwargs)
     val_loader = DataLoader(dataset_val, **val_loader_kwargs)
 
-    if model_type == "mini_deepcharuco":
-        model = MiniDeepCharuco(
-            num_corners=config.n_ids,
-            in_channels=1,
-            backbone=config.mini_backbone
-        )
-        loss_cfg = MiniLossConfig(lambda_offset=config.mini_lambda_offset)
-        train_model = lMiniModel(model=model,
-                                 loss_config=loss_cfg,
-                                 lr=config.mini_learning_rate)
-        logger = TensorBoardLogger("tb_logs", name="mini_deepcharuco")
-        checkpoint_callback = ModelCheckpoint(dirpath="tb_logs/ckpts_mini_deepcharuco/",
-                                              save_top_k=10,
-                                              monitor="val_loss")
-    else:
-        model = dcModel(n_ids=config.n_ids)
-        train_model = lModel(model)
-        logger = TensorBoardLogger("tb_logs", name="deepcharuco")
-        checkpoint_callback = ModelCheckpoint(dirpath="tb_logs/ckpts_deepcharuco/",
-                                              save_top_k=10,
-                                              monitor="val_loss")
+    callbacks = [checkpoint_callback]
+    if real_val_callback is not None:
+        callbacks.append(real_val_callback)
+
     early_stopping = EarlyStopping(
         monitor="val_loss",
         mode="min",
@@ -137,11 +180,13 @@ if __name__ == '__main__':
         min_delta=0.02,
         verbose=True
     )
+    callbacks.append(early_stopping)
     trainer = pl.Trainer(max_epochs=max_epochs, logger=logger,
                          accelerator=trainer_accelerator, devices=trainer_devices,
                          limit_train_batches=limit_train_batches,
                          limit_val_batches=limit_val_batches,
-                         callbacks=[checkpoint_callback, early_stopping]) #,
+                         callbacks=callbacks,
+                         check_val_every_n_epoch=config.val_every) #,
                          # resume_from_checkpoint='./reference/epoch=44-step=83205.ckpt')
 
     # Run learning rate finder

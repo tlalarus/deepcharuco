@@ -77,6 +77,8 @@ If you just want to run inference on COCO validation you can download only the `
 
 To specify the paths used and other configurations we use a `yaml` config file.
 By default the scripts will try to load `src/config.yaml`. There's a `demo_config.yaml` that you can copy, the parameters are the following:
+
+For mini real validation, use `use_real_val: true` and `real_val_dir` pointing to a prepared `data/mini_deepcharuco/val_real` directory. See `docs/mini_real_validation.md` for the full workflow.
 ```yaml
 input_size: [320, 240]  # Input images size used for training (width, height)
 bs_train: 32  # batch size for deep charuco

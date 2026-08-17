@@ -21,3 +21,10 @@ mini_stride: 4
 mini_heatmap_sigma: 1.8
 mini_lambda_offset: 1.0
 mini_learning_rate: 0.001
+
+use_real_val: false
+real_val_dir: ''
+real_val_batch_size: 1
+real_val_num_workers: 0
+real_val_every: 1
+val_every: 1

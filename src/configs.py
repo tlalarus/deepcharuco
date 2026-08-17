@@ -29,6 +29,13 @@ class Config:
     train_images: str
     val_images: str
 
+    use_real_val: bool = False
+    real_val_dir: str = ''
+    real_val_batch_size: int = 1
+    real_val_num_workers: int = 0
+    real_val_every: int = 1
+    val_every: int = 1
+
     # Self populated
     n_ids: Optional[int] = None
     # Mini DeepCharuco options
