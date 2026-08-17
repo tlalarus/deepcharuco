@@ -243,12 +243,13 @@ class MiniCharucoDataset(Dataset):
             if xh < 0 or yh < 0 or xh >= out_w or yh >= out_h:
                 continue
 
-            _draw_gaussian(heatmap[k], xh, yh, self.sigma)
-
             xi = int(np.floor(xh))
             yi = int(np.floor(yh))
             xi = np.clip(xi, 0, out_w - 1)
             yi = np.clip(yi, 0, out_h - 1)
+
+            # Heatmap peak and offset supervision must use the same spatial cell.
+            _draw_gaussian(heatmap[k], xi, yi, self.sigma)
 
             offset[0, yi, xi] = xh - xi
             offset[1, yi, xi] = yh - yi

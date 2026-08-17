@@ -52,6 +52,16 @@ def board_transformations(refinenet, input_size):
                                                               remove_invisible=True))
 
 
+def _fit_board_resolution(input_size, row_count, col_count):
+    """Fit a square-cell board inside the model input canvas."""
+    input_width, input_height = input_size
+    cell_size = min(input_width / col_count, input_height / row_count)
+    return (
+        int(round(cell_size * col_count)),
+        int(round(cell_size * row_count)),
+    )
+
+
 class Transformation:
     """
     Class to apply augmentation on COCO dataset to train deepcharuco.
@@ -72,9 +82,13 @@ class Transformation:
 
         self.refinenet = refinenet
 
-        min_r = min(configs.input_size)
         board = get_board(configs)
-        board_img, corners = board_image(board, (min_r, min_r),
+        board_resolution = _fit_board_resolution(
+            configs.input_size,
+            configs.row_count,
+            configs.col_count,
+        )
+        board_img, corners = board_image(board, board_resolution,
                                          configs.row_count, configs.col_count)
 
         self.board_img = board_img

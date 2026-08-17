@@ -7,6 +7,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import torch
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 SRC_DIR = ROOT_DIR / "src"
@@ -15,6 +16,8 @@ sys.path.insert(0, str(SRC_DIR))
 from configs import Config
 from data_mini import MiniCharucoDataset
 from prepare_real_val import prepare_real_validation
+from real_validation import decode_heatmap_offset
+from transformations import Transformation
 
 
 class TestMiniRealValidation(unittest.TestCase):
@@ -147,6 +150,53 @@ class TestMiniRealValidation(unittest.TestCase):
             item = dataset[0]
             self.assertEqual(int(item["valid_mask"].sum()), 2)
             self.assertEqual(item["ids"].tolist(), [0, 2])
+
+    def test_heatmap_and_offset_share_floor_cell(self):
+        config = self._make_config(input_size=(32, 24))
+        dataset = MiniCharucoDataset.__new__(MiniCharucoDataset)
+        dataset.stride = int(config.mini_stride)
+        dataset.sigma = float(config.mini_heatmap_sigma)
+        dataset.n_corners = int(config.n_ids)
+
+        keypoints = np.asarray([[10.25, 7.75], [27.9, 18.1]], dtype=np.float32)
+        keypoint_ids = np.asarray([0, 39], dtype=np.int64)
+        heatmap, offset, offset_mask = dataset._build_targets(
+            image_shape=(24, 32),
+            keypoints=keypoints,
+            keypoint_ids=keypoint_ids,
+            isnegative=False,
+        )
+
+        expected_cells = np.floor(keypoints / dataset.stride).astype(np.int64)
+        for corner_id, (expected_x, expected_y) in zip(keypoint_ids, expected_cells):
+            peak_y, peak_x = np.unravel_index(
+                np.argmax(heatmap[corner_id]), heatmap[corner_id].shape
+            )
+            self.assertEqual((peak_x, peak_y), (expected_x, expected_y))
+            self.assertEqual(float(heatmap[corner_id, peak_y, peak_x]), 1.0)
+            self.assertEqual(float(offset_mask[0, peak_y, peak_x]), 1.0)
+
+        decoded = decode_heatmap_offset(
+            torch.from_numpy(heatmap).unsqueeze(0),
+            torch.from_numpy(offset).unsqueeze(0),
+            stride=dataset.stride,
+        )[0].numpy()
+        np.testing.assert_allclose(decoded[keypoint_ids], keypoints, atol=1e-5)
+
+    def test_training_board_uses_square_cells(self):
+        config = self._make_config(input_size=(320, 240))
+        transformation = Transformation(config)
+
+        self.assertEqual(transformation.board_img.shape[:2], (213, 320))
+
+        corner_grid = transformation.corners.reshape(
+            config.row_count - 1,
+            config.col_count - 1,
+            2,
+        )
+        horizontal_spacing = np.diff(corner_grid, axis=1)[..., 0].mean()
+        vertical_spacing = np.diff(corner_grid, axis=0)[..., 1].mean()
+        self.assertAlmostEqual(horizontal_spacing, vertical_spacing, delta=0.2)
 
 
 if __name__ == "__main__":
