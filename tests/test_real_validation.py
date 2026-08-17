@@ -183,6 +183,15 @@ class TestMiniRealValidation(unittest.TestCase):
         )[0].numpy()
         np.testing.assert_allclose(decoded[keypoint_ids], keypoints, atol=1e-5)
 
+        colliding_keypoints = np.asarray([[10.25, 7.75], [11.5, 7.25]], dtype=np.float32)
+        with self.assertRaisesRegex(ValueError, "Offset target collision"):
+            dataset._build_targets(
+                image_shape=(24, 32),
+                keypoints=colliding_keypoints,
+                keypoint_ids=np.asarray([0, 1], dtype=np.int64),
+                isnegative=False,
+            )
+
     def test_training_board_uses_square_cells(self):
         config = self._make_config(input_size=(320, 240))
         transformation = Transformation(config)
@@ -198,7 +207,7 @@ class TestMiniRealValidation(unittest.TestCase):
         vertical_spacing = np.diff(corner_grid, axis=0)[..., 1].mean()
         self.assertAlmostEqual(horizontal_spacing, vertical_spacing, delta=0.2)
 
-        rotation_group = transformation._transf_board.transforms[1]
+        rotation_group = transformation._transf_board_geometry.transforms[1]
         self.assertEqual(rotation_group.p, 1.0)
         self.assertEqual(rotation_group.transforms_ps, [0.8, 0.15, 0.05])
 
@@ -208,13 +217,17 @@ class TestMiniRealValidation(unittest.TestCase):
         ):
             self.assertEqual(affine.scale["x"], (0.3, 0.5))
             self.assertEqual(affine.scale["y"], (0.3, 0.5))
-            self.assertEqual(affine.translate_percent["x"], (-0.34, 0.34))
-            self.assertEqual(affine.translate_percent["y"], (-0.34, 0.34))
+            self.assertEqual(affine.translate_percent["x"], (-0.30, 0.30))
+            self.assertEqual(affine.translate_percent["y"], (-0.30, 0.30))
             self.assertEqual(affine.rotate, expected_rotation)
             self.assertEqual(affine.shear["x"], (-10, 10))
             self.assertEqual(affine.shear["y"], (-10, 10))
 
-        dropout_group = transformation._transf_board.transforms[3]
+        perspective = transformation._transf_board_geometry.transforms[2]
+        self.assertEqual(perspective.scale, (0.02, 0.08))
+        self.assertEqual(perspective.p, 0.6)
+
+        dropout_group = transformation._transf_board_occlusion.transforms[0]
         self.assertEqual(dropout_group.p, 0.1)
         for dropout in dropout_group.transforms:
             self.assertEqual(dropout.max_holes, 3)

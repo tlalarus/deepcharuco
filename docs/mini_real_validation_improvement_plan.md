@@ -122,9 +122,9 @@ board 비율은 추가로 왜곡되지 않습니다.
 
 ### 원인
 
-현재 synthetic augmentation은 affine, rotation, shear 중심입니다. Real validation에는
-강한 projective perspective, 작은 marker, 저조도/IR 영상, 센서 노이즈, 낮은 contrast,
-defocus와 실제 종이 반사가 포함됩니다.
+Synthetic augmentation의 scale, rotation, visibility, photometric, perspective 분포는
+1차 조정했습니다. 실제 종이 반사와 hard-edge 합성, 카메라 pose 기반 projection은 아직
+반영하지 않았습니다.
 
 15장 기준 분석에서는 보드 셀이 작을수록 오차가 커지는 상관이 -0.617, 원근 왜곡이
 강할수록 오차가 커지는 상관이 +0.733이었습니다. 가장 강한 원근 왜곡을 가진
@@ -132,7 +132,7 @@ defocus와 실제 종이 반사가 포함됩니다.
 
 ### 해결 방향
 
-- 카메라 pose 또는 homography 기반 perspective augmentation 추가
+- 단기적으로 `A.Perspective`, 이후 카메라 pose 또는 homography 기반 augmentation 적용
 - 실제 입력에서 관측된 10-16px cell 크기를 중심으로 scale distribution 조정
 - gamma, exposure, low contrast, shot/read noise, defocus, motion blur 추가
 - hard-edge binary paste 대신 실제 센서의 board/background 밝기 분포 반영
@@ -143,20 +143,26 @@ defocus와 실제 종이 반사가 포함됩니다.
 
 - 일반 mini 학습의 board scale을 `(0.25, 0.9)`에서 `(0.3, 0.5)`로 조정했습니다.
   수정된 정사각형 cell board 기준으로 약 10.7-17.8px cell 크기를 주로 생성합니다.
-- Partial-board 비율을 약 10%로 맞추기 위해 translation을 `+-0.45`에서 `+-0.34`로
-  줄였습니다.
+- Perspective 적용 후에도 partial-board 비율을 약 10%로 유지하기 위해 translation을
+  `+-0.45`에서 `+-0.30`으로 줄였습니다.
 - CoarseDropout 적용 확률을 0.4에서 0.1로 줄이고, hole을 최대 3개와 8-32px
   크기로 제한했습니다.
 - 회전은 80% `+-15도`, 15% `+-45도`, 5% `+-180도` 혼합 분포로 변경하고 shear를
   `+-10도`로 줄였습니다.
-- 320x240 설정에서 회전 혼합 분포를 포함해 seed를 달리해 측정한 partial-board 비율은
-  9.9-11.1%였습니다.
+- `A.Perspective(scale=(0.02, 0.08), p=0.6)`를 Affine 뒤에 추가했습니다. Geometry
+  validator를 통과하지 못하면 최대 10회 재생성하고, 계속 실패하면 안전한 affine-only
+  transform으로 fallback합니다.
+- Geometry와 occlusion pipeline을 분리하고 finite coordinate, ID 유일성, visible corner,
+  board 면적, 최소 인접 거리, perspective 강도, grid fold, stride cell collision을
+  검사합니다. Target 생성에도 collision 방어 검사를 추가했습니다.
+- 10,000개 표본에서 full-board 89.93%, partial-board 10.07%, same-cell collision 0,
+  fallback 0을 기록했습니다. 최소 인접 거리 p01은 10px, spacing ratio p99는 1.38입니다.
 - Exposure/gamma, contrast, blur/downscale, sensor noise를 순서대로 적용하는 photometric
   pipeline을 추가했습니다.
 - 400개 합성 표본에서 전체 밝기 중앙값 38.7, 전체 표준편차 27.3, board contrast
   표준편차 40.6, board Laplacian variance 2,060을 기록했습니다. 진단에 사용한 real
   중앙값 37.8, 31.3, 34.2, 2,818에 근접하도록 초기 파라미터를 보정했습니다.
-- Perspective augmentation은 후속 실험으로 남겨 두었습니다.
+- 카메라 pose 기반 perspective는 후속 실험으로 남겨 두었습니다.
 
 ## P2: Corner localization과 ID 인식
 
@@ -199,6 +205,7 @@ validation 15장만으로는 camera와 scene별 일반화 성능을 충분히 �
 2. 기존 checkpoint 디렉터리를 재사용하지 않고 새로운 experiment 이름으로 학습합니다.
 3. Synthetic decoded coordinate metric과 real metric을 동일한 픽셀 단위로 보고합니다.
 4. Mean뿐 아니라 median, P95, PCK@2, PCK@5를 이전 baseline과 비교합니다.
-5. Perspective augmentation 이후 same-cell offset collision 빈도를 기록합니다.
+5. Perspective augmentation 이후 same-cell offset collision 빈도를 기록합니다. 현재
+   10,000개 표본에서는 0건입니다.
 6. Real validation 15장은 학습 데이터에 포함하지 않습니다.
 7. 학습 sample의 board cell 가로/세로 비율과 real 분포를 비교합니다.

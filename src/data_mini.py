@@ -231,6 +231,7 @@ class MiniCharucoDataset(Dataset):
         if isnegative:
             return heatmap, offset, offset_mask
 
+        cell_owners = {}
         for kp, idx in zip(keypoints, keypoint_ids):
             k = int(idx)
             if k < 0 or k >= self.n_corners:
@@ -247,6 +248,14 @@ class MiniCharucoDataset(Dataset):
             yi = int(np.floor(yh))
             xi = np.clip(xi, 0, out_w - 1)
             yi = np.clip(yi, 0, out_h - 1)
+
+            cell = (int(yi), int(xi))
+            if cell in cell_owners:
+                raise ValueError(
+                    f"Offset target collision at cell {cell}: corner IDs "
+                    f"{cell_owners[cell]} and {k}"
+                )
+            cell_owners[cell] = k
 
             # Heatmap peak and offset supervision must use the same spatial cell.
             _draw_gaussian(heatmap[k], xi, yi, self.sigma)

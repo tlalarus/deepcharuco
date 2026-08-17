@@ -3,6 +3,7 @@ import albumentations as A
 import numpy as np
 import cv2
 import random
+from augmentation_validation import validate_board_sample
 from aruco_utils import board_image, get_board
 from custom_aug.custom_aug import PasteBoard
 
@@ -19,15 +20,9 @@ def apply_to_keypoints(self, keypoints, holes, **params):
 A.CoarseDropout.apply_to_keypoints = apply_to_keypoints  # noqa: E305
 
 
-def board_transformations(refinenet, input_size):
-    transl = (0, 0) if refinenet else (-0.34, 0.34)
+def board_geometry_transformations(refinenet, input_size, use_perspective=True):
+    transl = (0, 0) if refinenet else (-0.30, 0.30)
     scale = (0.3, 0.75) if refinenet else (0.3, 0.5)
-    cd_p = 0 if refinenet else 0.1
-    max_holes = 3
-    min_holes = 1
-    maxs = 32
-    mins = 8
-
     if refinenet:
         geometry_transform = A.Affine(
             scale=scale,
@@ -55,27 +50,98 @@ def board_transformations(refinenet, input_size):
             p=1.0,
         )
 
-    transf = [A.PadIfNeeded(min_height=input_size[1],
-                            min_width=input_size[0], always_apply=True,
-                            border_mode=cv2.BORDER_CONSTANT, value=0,
-                            mask_value=0),
-              geometry_transform,
-              A.Resize(height=input_size[1], width=input_size[0],
-                       always_apply=True),
-              A.OneOf([A.CoarseDropout(max_holes=max_holes, max_height=maxs,
-                                       max_width=maxs, min_holes=min_holes,
-                                       min_height=mins, min_width=mins,
-                                       mask_fill_value=0),
-                       *[A.CoarseDropout(max_holes=max_holes, max_height=maxs,
-                                         max_width=maxs, min_holes=min_holes,
-                                         min_height=mins, min_width=mins,
-                                         fill_value = f, mask_fill_value=255)
-                         for f in (0, 128, 255)]
-                       ], p=cd_p)
-              ]
+    transf = [
+        A.PadIfNeeded(
+            min_height=input_size[1],
+            min_width=input_size[0],
+            always_apply=True,
+            border_mode=cv2.BORDER_CONSTANT,
+            value=0,
+            mask_value=0,
+        ),
+        geometry_transform,
+    ]
+    if use_perspective and not refinenet:
+        transf.append(
+            A.Perspective(
+                scale=(0.02, 0.08),
+                keep_size=True,
+                pad_mode=cv2.BORDER_CONSTANT,
+                pad_val=0,
+                mask_pad_val=0,
+                fit_output=False,
+                interpolation=cv2.INTER_LINEAR,
+                p=0.6,
+            )
+        )
+    transf.append(
+        A.Resize(height=input_size[1], width=input_size[0], always_apply=True)
+    )
     return A.Compose(transf, keypoint_params=A.KeypointParams(format='xy',
                                                               label_fields=['ids'],
                                                               remove_invisible=True))
+
+
+def board_occlusion_transformations(refinenet):
+    dropout_probability = 0 if refinenet else 0.1
+    transforms = [
+        A.CoarseDropout(
+            max_holes=3,
+            max_height=32,
+            max_width=32,
+            min_holes=1,
+            min_height=8,
+            min_width=8,
+            mask_fill_value=0,
+        ),
+        *[
+            A.CoarseDropout(
+                max_holes=3,
+                max_height=32,
+                max_width=32,
+                min_holes=1,
+                min_height=8,
+                min_width=8,
+                fill_value=fill_value,
+                mask_fill_value=255,
+            )
+            for fill_value in (0, 128, 255)
+        ],
+    ]
+    return A.Compose(
+        [A.OneOf(transforms, p=dropout_probability)],
+        keypoint_params=A.KeypointParams(
+            format='xy', label_fields=['ids'], remove_invisible=True
+        ),
+    )
+
+
+def safe_board_geometry_transformations(input_size):
+    return A.Compose(
+        [
+            A.PadIfNeeded(
+                min_height=input_size[1],
+                min_width=input_size[0],
+                always_apply=True,
+                border_mode=cv2.BORDER_CONSTANT,
+                value=0,
+                mask_value=0,
+            ),
+            A.Affine(
+                scale=0.4,
+                rotate=0,
+                shear=0,
+                translate_percent=0,
+                keep_ratio=True,
+                fit_output=False,
+                always_apply=True,
+            ),
+            A.Resize(height=input_size[1], width=input_size[0], always_apply=True),
+        ],
+        keypoint_params=A.KeypointParams(
+            format='xy', label_fields=['ids'], remove_invisible=True
+        ),
+    )
 
 
 def _fit_board_resolution(input_size, row_count, col_count):
@@ -107,6 +173,14 @@ class Transformation:
             imgaug.random.seed(seed)
 
         self.refinenet = refinenet
+        self.input_size = tuple(configs.input_size)
+        self.stride = int(configs.mini_stride)
+        self.row_count = int(configs.row_count)
+        self.col_count = int(configs.col_count)
+        self.max_geometry_attempts = 10
+        self._last_geometry_attempts = 0
+        self._last_geometry_fallback = False
+        self._last_board_validation = None
 
         board = get_board(configs)
         board_resolution = _fit_board_resolution(
@@ -124,7 +198,11 @@ class Transformation:
                                   dtype=np.uint8, fill_value=255)
 
         # 1) Create transformation for board image
-        self._transf_board = board_transformations(self.refinenet, configs.input_size)
+        self._transf_board_geometry = board_geometry_transformations(
+            self.refinenet, configs.input_size, use_perspective=True
+        )
+        self._transf_board_occlusion = board_occlusion_transformations(self.refinenet)
+        self._transf_board_fallback = safe_board_geometry_transformations(configs.input_size)
 
         # 1bis) COCO transformation
         self._transf_coco = A.Compose([
@@ -188,11 +266,44 @@ class Transformation:
         )
 
     def _transform_board(self):
-        t_res = self._transf_board(image=self.board_img,
-                                   mask=self.board_mask,
-                                   keypoints=self.corners,
-                                   ids=self.ids)
-        return t_res
+        transform_args = {
+            "image": self.board_img,
+            "mask": self.board_mask,
+            "keypoints": self.corners,
+            "ids": self.ids,
+        }
+        self._last_geometry_fallback = False
+
+        for attempt in range(1, self.max_geometry_attempts + 1):
+            result = self._transf_board_geometry(**transform_args)
+            validation = self._validate_board_geometry(result)
+            if validation.is_valid:
+                self._last_geometry_attempts = attempt
+                self._last_board_validation = validation
+                return self._transf_board_occlusion(**result)
+
+        result = self._transf_board_fallback(**transform_args)
+        validation = self._validate_board_geometry(result)
+        if not validation.is_valid:
+            raise RuntimeError(
+                "Safe board geometry fallback produced an invalid sample: "
+                + ", ".join(validation.reasons)
+            )
+
+        self._last_geometry_attempts = self.max_geometry_attempts
+        self._last_geometry_fallback = True
+        self._last_board_validation = validation
+        return self._transf_board_occlusion(**result)
+
+    def _validate_board_geometry(self, result):
+        return validate_board_sample(
+            keypoints=result["keypoints"],
+            ids=result["ids"],
+            image_shape=result["image"].shape[:2],
+            stride=self.stride,
+            row_count=self.row_count,
+            col_count=self.col_count,
+        )
 
     def __call__(self, coco_img):
         return self.transform(coco_img)
