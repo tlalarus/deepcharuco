@@ -198,6 +198,41 @@ class TestMiniRealValidation(unittest.TestCase):
         vertical_spacing = np.diff(corner_grid, axis=0)[..., 1].mean()
         self.assertAlmostEqual(horizontal_spacing, vertical_spacing, delta=0.2)
 
+        rotation_group = transformation._transf_board.transforms[1]
+        self.assertEqual(rotation_group.p, 1.0)
+        self.assertEqual(rotation_group.transforms_ps, [0.8, 0.15, 0.05])
+
+        expected_rotations = [(-15, 15), (-45, 45), (-180, 180)]
+        for affine, expected_rotation in zip(
+            rotation_group.transforms, expected_rotations
+        ):
+            self.assertEqual(affine.scale["x"], (0.3, 0.5))
+            self.assertEqual(affine.scale["y"], (0.3, 0.5))
+            self.assertEqual(affine.translate_percent["x"], (-0.34, 0.34))
+            self.assertEqual(affine.translate_percent["y"], (-0.34, 0.34))
+            self.assertEqual(affine.rotate, expected_rotation)
+            self.assertEqual(affine.shear["x"], (-10, 10))
+            self.assertEqual(affine.shear["y"], (-10, 10))
+
+        dropout_group = transformation._transf_board.transforms[3]
+        self.assertEqual(dropout_group.p, 0.1)
+        for dropout in dropout_group.transforms:
+            self.assertEqual(dropout.max_holes, 3)
+            self.assertEqual(dropout.max_height, 32)
+            self.assertEqual(dropout.max_width, 32)
+            self.assertEqual(dropout.min_height, 8)
+            self.assertEqual(dropout.min_width, 8)
+
+        exposure_group = transformation._transf_joint.transforms[1]
+        contrast = transformation._transf_joint.transforms[2]
+        blur_group = transformation._transf_joint.transforms[3]
+        noise_group = transformation._transf_joint.transforms[4]
+        self.assertEqual(exposure_group.p, 0.75)
+        self.assertEqual(contrast.contrast_limit, (-0.65, -0.35))
+        self.assertEqual(contrast.p, 0.9)
+        self.assertEqual(blur_group.p, 0.8)
+        self.assertEqual(noise_group.p, 0.4)
+
 
 if __name__ == "__main__":
     unittest.main()

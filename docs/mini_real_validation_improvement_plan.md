@@ -139,6 +139,25 @@ defocus와 실제 종이 반사가 포함됩니다.
 - 변환 후 인접 corner 최소 거리와 visible area를 검사해 비현실적 sample 제외
 - camera, 거리, 각도, 조명별 real train 데이터를 확보하고 별도 validation/test와 분리
 
+### 구현된 분포 조정
+
+- 일반 mini 학습의 board scale을 `(0.25, 0.9)`에서 `(0.3, 0.5)`로 조정했습니다.
+  수정된 정사각형 cell board 기준으로 약 10.7-17.8px cell 크기를 주로 생성합니다.
+- Partial-board 비율을 약 10%로 맞추기 위해 translation을 `+-0.45`에서 `+-0.34`로
+  줄였습니다.
+- CoarseDropout 적용 확률을 0.4에서 0.1로 줄이고, hole을 최대 3개와 8-32px
+  크기로 제한했습니다.
+- 회전은 80% `+-15도`, 15% `+-45도`, 5% `+-180도` 혼합 분포로 변경하고 shear를
+  `+-10도`로 줄였습니다.
+- 320x240 설정에서 회전 혼합 분포를 포함해 seed를 달리해 측정한 partial-board 비율은
+  9.9-11.1%였습니다.
+- Exposure/gamma, contrast, blur/downscale, sensor noise를 순서대로 적용하는 photometric
+  pipeline을 추가했습니다.
+- 400개 합성 표본에서 전체 밝기 중앙값 38.7, 전체 표준편차 27.3, board contrast
+  표준편차 40.6, board Laplacian variance 2,060을 기록했습니다. 진단에 사용한 real
+  중앙값 37.8, 31.3, 34.2, 2,818에 근접하도록 초기 파라미터를 보정했습니다.
+- Perspective augmentation은 후속 실험으로 남겨 두었습니다.
+
 ## P2: Corner localization과 ID 인식
 
 ### 원인

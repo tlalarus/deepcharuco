@@ -20,20 +20,46 @@ A.CoarseDropout.apply_to_keypoints = apply_to_keypoints  # noqa: E305
 
 
 def board_transformations(refinenet, input_size):
-    transl = (0, 0) if refinenet else (-0.45, 0.45)
-    scale = (0.3, 0.75) if refinenet else (0.25, 0.9)
-    cd_p = 0 if refinenet else 0.4
-    max_holes = 6
+    transl = (0, 0) if refinenet else (-0.34, 0.34)
+    scale = (0.3, 0.75) if refinenet else (0.3, 0.5)
+    cd_p = 0 if refinenet else 0.1
+    max_holes = 3
     min_holes = 1
-    maxs = 64
-    mins = 16
+    maxs = 32
+    mins = 8
+
+    if refinenet:
+        geometry_transform = A.Affine(
+            scale=scale,
+            rotate=(-360, 360),
+            shear=(-35, 35),
+            translate_percent=transl,
+            keep_ratio=True,
+            fit_output=False,
+            always_apply=True,
+        )
+    else:
+        affine_kwargs = {
+            "scale": scale,
+            "shear": (-10, 10),
+            "translate_percent": transl,
+            "keep_ratio": True,
+            "fit_output": False,
+        }
+        geometry_transform = A.OneOf(
+            [
+                A.Affine(rotate=(-15, 15), p=0.80, **affine_kwargs),
+                A.Affine(rotate=(-45, 45), p=0.15, **affine_kwargs),
+                A.Affine(rotate=(-180, 180), p=0.05, **affine_kwargs),
+            ],
+            p=1.0,
+        )
+
     transf = [A.PadIfNeeded(min_height=input_size[1],
                             min_width=input_size[0], always_apply=True,
                             border_mode=cv2.BORDER_CONSTANT, value=0,
                             mask_value=0),
-              A.Affine(scale=scale, rotate=(-360, 360), shear=(-35, 35),
-                       translate_percent=transl, keep_ratio=True,
-                       fit_output=False, always_apply=True),
+              geometry_transform,
               A.Resize(height=input_size[1], width=input_size[0],
                        always_apply=True),
               A.OneOf([A.CoarseDropout(max_holes=max_holes, max_height=maxs,
@@ -115,18 +141,48 @@ class Transformation:
         # 2 + 3) Apply histogram matching then Paste transformation
         self._transf_joint = A.Compose([
             PasteBoard(always_apply=True),
-
-            A.ColorJitter(brightness=0, p=0.5),
-            A.RGBShift(p=0.5),
-
-            # Augmentations as from paper
-            A.GaussNoise(p=0.5),
-            A.MotionBlur(blur_limit=5, p=0.5),
-            A.GaussianBlur(blur_limit=(3, 7), p=0.25),
-            A.MultiplicativeNoise(multiplier=(0.95, 1.05), p=0.5),
-            A.RandomBrightnessContrast(brightness_limit=(-0.8, 0.35),
-                                       contrast_limit=0, p=0.5),
-
+            A.OneOf([
+                A.RandomGamma(gamma_limit=(110, 180), p=1.0),
+                A.MultiplicativeNoise(
+                    multiplier=(0.45, 0.85),
+                    per_channel=False,
+                    elementwise=False,
+                    p=1.0,
+                ),
+            ], p=0.75),
+            A.RandomBrightnessContrast(
+                brightness_limit=(-0.10, 0.05),
+                contrast_limit=(-0.65, -0.35),
+                brightness_by_max=True,
+                p=0.9,
+            ),
+            A.OneOf([
+                A.GaussianBlur(
+                    blur_limit=(3, 5),
+                    sigma_limit=(0.5, 1.8),
+                    p=1.0,
+                ),
+                A.MotionBlur(blur_limit=(3, 7), allow_shifted=True, p=1.0),
+                A.Downscale(
+                    scale_min=0.5,
+                    scale_max=0.8,
+                    interpolation=cv2.INTER_AREA,
+                    p=1.0,
+                ),
+            ], p=0.8),
+            A.OneOf([
+                A.GaussNoise(
+                    var_limit=(5.0, 30.0),
+                    mean=0,
+                    per_channel=False,
+                    p=1.0,
+                ),
+                A.ISONoise(
+                    color_shift=(0.0, 0.01),
+                    intensity=(0.1, 0.4),
+                    p=1.0,
+                ),
+            ], p=0.4),
         ], keypoint_params=A.KeypointParams(format='xy', label_fields=['ids'],
                                             remove_invisible=True)
         )
